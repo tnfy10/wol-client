@@ -1,26 +1,26 @@
 package xyz.myeoru.wolclient
 
 import androidx.compose.foundation.layout.*
-import androidx.compose.material.Button
-import androidx.compose.material.MaterialTheme
-import androidx.compose.material.OutlinedTextField
-import androidx.compose.material.Text
+import androidx.compose.material.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.awt.ComposeWindow
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import org.jetbrains.compose.ui.tooling.preview.Preview
+import java.awt.FileDialog
+import java.io.File
+import java.io.FileInputStream
+import java.io.FileOutputStream
 import java.net.DatagramPacket
 import java.net.DatagramSocket
 import java.net.InetAddress
+import java.util.*
 
-@Preview
 @Composable
-fun WolScreen() {
-    // 저장된 값을 불러오는 대신 기본값으로 초기화
+fun WolScreen(window: ComposeWindow) {
     var macAddress by remember { mutableStateOf("") }
     var ipAddress by remember { mutableStateOf("255.255.255.255") }
     var statusMessage by remember { mutableStateOf("준비됨") }
@@ -36,39 +36,70 @@ fun WolScreen() {
 
         Spacer(Modifier.height(30.dp))
 
-        // MAC 주소 입력
+        // --- 입력 필드 ---
         OutlinedTextField(
             value = macAddress,
             onValueChange = { macAddress = it },
-            label = { Text("MAC Address (예: AA:BB:CC:...)") },
+            label = { Text("MAC Address") },
+            placeholder = { Text("예: AA:BB:CC:DD:EE:FF") },
             modifier = Modifier.fillMaxWidth(),
             singleLine = true
         )
 
-        Spacer(Modifier.height(15.dp))
+        Spacer(Modifier.height(10.dp))
 
-        // IP 주소 입력
         OutlinedTextField(
             value = ipAddress,
             onValueChange = { ipAddress = it },
             label = { Text("IP Address") },
             modifier = Modifier.fillMaxWidth(),
-            singleLine = true,
-            placeholder = { Text("기본값: 255.255.255.255") }
-        )
-        Text(
-            text = "* 내부망: 255.255.255.255 / 외부망: DDNS 주소",
-            style = MaterialTheme.typography.caption,
-            color = MaterialTheme.colors.onSurface.copy(alpha = 0.6f),
-            modifier = Modifier.align(Alignment.Start).padding(start = 5.dp, top = 4.dp)
+            singleLine = true
         )
 
-        Spacer(Modifier.height(25.dp))
+        Spacer(Modifier.height(20.dp))
 
+        // --- 파일 저장/불러오기 버튼 영역 ---
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceEvenly
+        ) {
+            // [불러오기 버튼]
+            Button(
+                onClick = {
+                    val file = openFileDialog(window, FileDialog.LOAD)
+                    if (file != null) {
+                        val (loadedMac, loadedIp) = loadConfigFromFile(file)
+                        macAddress = loadedMac
+                        ipAddress = loadedIp
+                        statusMessage = "설정 불러오기 성공: ${file.name}"
+                    }
+                },
+                colors = ButtonDefaults.buttonColors(backgroundColor = MaterialTheme.colors.secondary)
+            ) {
+                Text("📂 설정 불러오기")
+            }
+
+            // [저장하기 버튼]
+            Button(
+                onClick = {
+                    val file = openFileDialog(window, FileDialog.SAVE)
+                    if (file != null) {
+                        saveConfigToFile(file, macAddress, ipAddress)
+                        statusMessage = "설정 저장 완료: ${file.name}"
+                    }
+                },
+                colors = ButtonDefaults.buttonColors(backgroundColor = MaterialTheme.colors.secondary)
+            ) {
+                Text("💾 설정 저장하기")
+            }
+        }
+
+        Spacer(Modifier.height(30.dp))
+
+        // --- 전송 버튼 ---
         Button(
             onClick = {
                 scope.launch {
-                    // 저장 로직(saveConfig) 삭제됨
                     statusMessage = "전송 중..."
                     val result = sendMagicPacket(macAddress, ipAddress)
                     statusMessage = result
@@ -76,7 +107,7 @@ fun WolScreen() {
             },
             modifier = Modifier.fillMaxWidth().height(50.dp)
         ) {
-            Text("PC 켜기 (Send Packet)")
+            Text("🚀 PC 켜기 (Send Packet)")
         }
 
         Spacer(Modifier.height(20.dp))
@@ -88,15 +119,61 @@ fun WolScreen() {
     }
 }
 
-// --- WoL 전송 로직 ---
+// --- 파일 다이얼로그 띄우는 함수 ---
+fun openFileDialog(window: ComposeWindow, mode: Int): File? {
+    val dialog = FileDialog(window, if (mode == FileDialog.LOAD) "설정 파일 열기" else "설정 파일 저장", mode)
+
+    dialog.file = null
+    dialog.isVisible = true
+
+    val dir = dialog.directory
+    val file = dialog.file
+
+    return if (dir != null && file != null) {
+        File(dir, file)
+    } else {
+        null
+    }
+}
+
+// --- 파일 입출력 로직 ---
+fun loadConfigFromFile(file: File): Pair<String, String> {
+    val props = Properties()
+    try {
+        FileInputStream(file).use { props.load(it) }
+    } catch (e: Exception) {
+        e.printStackTrace()
+        return Pair("", "255.255.255.255")
+    }
+    return Pair(
+        props.getProperty("mac", ""),
+        props.getProperty("ip", "255.255.255.255")
+    )
+}
+
+fun saveConfigToFile(file: File, mac: String, ip: String) {
+    val props = Properties()
+    props.setProperty("mac", mac)
+    props.setProperty("ip", ip)
+
+    // 사용자가 확장자를 안 적었으면 .properties 붙여주기 (편의성)
+    val targetFile = if (file.name.contains(".")) file else File(file.parentFile, "${file.name}.properties")
+
+    try {
+        FileOutputStream(targetFile).use { props.store(it, "WoL Configuration") }
+    } catch (e: Exception) {
+        e.printStackTrace()
+    }
+}
+
+// --- WoL 전송 로직 (기존 동일) ---
 suspend fun sendMagicPacket(macStr: String, ipStr: String, port: Int = 9): String {
     return withContext(Dispatchers.IO) {
         try {
             val targetIp = if (ipStr.isBlank()) "255.255.255.255" else ipStr.trim()
-
             val macBytes = getMacBytes(macStr)
-            val bytes = ByteArray(6 + 16 * macBytes.size)
 
+            val bytes = ByteArray(6 + 16 * macBytes.size)
             for (i in 0 until 6) bytes[i] = 0xff.toByte()
             for (i in 0 until 16) {
                 System.arraycopy(macBytes, 0, bytes, 6 + i * macBytes.size, macBytes.size)
@@ -120,7 +197,6 @@ suspend fun sendMagicPacket(macStr: String, ipStr: String, port: Int = 9): Strin
 fun getMacBytes(macStr: String): ByteArray {
     val hex = macStr.replace(":", "").replace("-", "").trim()
     if (hex.length != 12) throw IllegalArgumentException("잘못된 MAC 주소")
-
     val bytes = ByteArray(6)
     for (i in 0 until 6) {
         bytes[i] = Integer.parseInt(hex.substring(i * 2, i * 2 + 2), 16).toByte()

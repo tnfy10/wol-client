@@ -14,6 +14,8 @@ fun main() = application {
         state = windowState,
         resizable = false
     ) {
-        App()
+        App(
+            window = window
+        )
     }
 }
