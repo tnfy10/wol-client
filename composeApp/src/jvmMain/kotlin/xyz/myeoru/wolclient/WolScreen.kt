@@ -10,6 +10,7 @@ import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import org.jetbrains.compose.ui.tooling.preview.Preview
 import java.awt.FileDialog
 import java.io.File
 import java.io.FileInputStream
@@ -20,7 +21,9 @@ import java.net.InetAddress
 import java.util.*
 
 @Composable
-fun WolScreen(window: ComposeWindow) {
+fun WolScreen(
+    openFileDialog: (mode: Int) -> File?
+) {
     var macAddress by remember { mutableStateOf("") }
     var ipAddress by remember { mutableStateOf("255.255.255.255") }
     var port by remember { mutableStateOf("9") } // 포트 번호 상태 추가 (기본값 9)
@@ -87,7 +90,7 @@ fun WolScreen(window: ComposeWindow) {
         ) {
             Button(
                 onClick = {
-                    val file = openFileDialog(window, FileDialog.LOAD)
+                    val file = openFileDialog(FileDialog.LOAD)
                     if (file != null) {
                         // 포트 번호까지 같이 불러옴 (Triple 사용)
                         val (loadedMac, loadedIp, loadedPort) = loadConfigFromFile(file)
@@ -104,7 +107,7 @@ fun WolScreen(window: ComposeWindow) {
 
             Button(
                 onClick = {
-                    val file = openFileDialog(window, FileDialog.SAVE)
+                    val file = openFileDialog(FileDialog.SAVE)
                     if (file != null) {
                         saveConfigToFile(file, macAddress, ipAddress, port)
                         statusMessage = "설정 저장 완료: ${file.name}"
@@ -227,4 +230,12 @@ fun getMacBytes(macStr: String): ByteArray {
         bytes[i] = Integer.parseInt(hex.substring(i * 2, i * 2 + 2), 16).toByte()
     }
     return bytes
+}
+
+@Preview
+@Composable
+private fun WolScreenPreview() {
+    WolScreen(
+        openFileDialog = { null }
+    )
 }

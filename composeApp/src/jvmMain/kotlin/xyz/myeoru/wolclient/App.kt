@@ -10,7 +10,9 @@ fun App(
 ) {
     MaterialTheme {
         WolScreen(
-            window = window
+            openFileDialog = {
+                openFileDialog(window, it)
+            }
         )
     }
 }
